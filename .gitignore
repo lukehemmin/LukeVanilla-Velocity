@@ -1,0 +1,40 @@
+# Gradle 관련
+.gradle/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# IntelliJ IDEA 관련
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+# Eclipse 관련
+.classpath
+.project
+.settings/
+bin/
+
+# Kotlin 관련
+*.class
+*.log
+
+# OS 관련
+.DS_Store
+Thumbs.db
+
+# 기타
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+hs_err_pid*
+replay_pid*
+
+# 런타임 파일
+run/ 
