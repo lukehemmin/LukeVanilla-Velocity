@@ -2,6 +2,7 @@ package com.lukehemmin.lukeVanillaVelocity;
 
 import com.google.inject.Inject
 import com.lukehemmin.lukeVanillaVelocity.commands.MessageCommand
+import com.lukehemmin.lukeVanillaVelocity.commands.SendPlayerCommand
 import com.velocitypowered.api.command.CommandManager
 import com.velocitypowered.api.event.Subscribe
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent
@@ -108,7 +109,14 @@ class LukeVanillaVelocity @Inject constructor(
             "smsg"
         )
         
-        logger.info("명령어가 등록되었습니다: /sendmessage, /smsg")
+        // 플레이어 서버 이동 명령어 등록
+        commandManager.register(
+            "sendplayer",
+            SendPlayerCommand(server, this),
+            "sendup"
+        )
+        
+        logger.info("명령어가 등록되었습니다: /sendmessage, /smsg, /sendplayer, /sendup")
     }
     
     /**
