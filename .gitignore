@@ -38,3 +38,4 @@ replay_pid*
 
 # 런타임 파일
 run/ 
+.cursor/
