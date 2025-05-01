@@ -1,457 +1,419 @@
 # 프로젝트 구조
 
-이 문서는 LukeVanilla 메시징 시스템의 프로젝트 구조와 코드 구성에 대해 설명합니다.
+LukeVanilla-Velocity 시스템의 코드 및 프로젝트 구성에 대한 상세한 설명입니다.
+
+- [설치 및 설정 가이드로 이동](installation.md)
+- [사용자 가이드로 이동](user-guide.md)
+- [개발자 API 문서로 이동](developer-api.md)
+- [테스트 및 디버깅으로 이동](testing.md)
 
 ## 목차
 
-- [개요](#개요)
-- [Velocity 플러그인 구조](#velocity-플러그인-구조)
-- [Paper 플러그인 구조](#paper-플러그인-구조)
-- [메시징 프로토콜](#메시징-프로토콜)
-- [빌드 시스템](#빌드-시스템)
-- [확장 가능성](#확장-가능성)
+1. [프로젝트 개요](#프로젝트-개요)
+2. [디렉토리 구조](#디렉토리-구조)
+3. [Velocity 플러그인 구조](#velocity-플러그인-구조)
+4. [Paper 플러그인 구조](#paper-플러그인-구조)
+5. [핵심 컴포넌트](#핵심-컴포넌트)
+6. [빌드 시스템](#빌드-시스템)
+7. [템플릿 사용법](#템플릿-사용법)
 
-## 개요
+## 프로젝트 개요
 
-LukeVanilla 메시징 시스템은 두 개의 주요 구성 요소로 이루어져 있습니다:
+LukeVanilla-Velocity 프로젝트는 Minecraft 서버 네트워크에서 서버 간 메시징과 서버 상태 모니터링을 제공하는 플러그인 시스템입니다. 프로젝트는 두 가지 주요 구성 요소로 구성됩니다:
 
-1. **LukeVanilla-Velocity**: Velocity 프록시에서 실행되는 플러그인으로, 서버 간 메시지 라우팅을 담당합니다.
-2. **LukeVanilla-Paper**: Paper 서버에서 실행되는 플러그인으로, 메시지 송수신 기능을 제공합니다.
+1. **Velocity 프록시 플러그인**: 메시지 라우팅, 서버 상태 관리 및 플레이어 라우팅을 담당합니다.
+2. **Paper 서버 플러그인**: 메시지 수신 및 처리, 상태 확인 응답을 담당합니다.
 
-이 두 구성 요소는 다음 디렉토리 구조로 조직되어 있습니다:
+### 주요 기능
+
+- **서버 간 메시징**: 한 서버에서 다른 서버로 메시지를 전송할 수 있습니다.
+- **서버 상태 관리**: 서버의 온라인/오프라인 상태를 모니터링합니다.
+- **자동 플레이어 라우팅**: 서버 상태에 따라 플레이어를 적절한 서버로 라우팅합니다.
+
+### 기술 스택
+
+- **언어**: Kotlin
+- **빌드 도구**: Gradle
+- **의존성**: Velocity API, Paper API
+- **메시징 프로토콜**: Minecraft Plugin Messaging Channel
+- **버전 관리**: Git
+
+## 디렉토리 구조
+
+전체 프로젝트 구조는 다음과 같습니다:
 
 ```
 LukeVanilla-Velocity/
 ├── src/
-│   ├── main/
-│   │   ├── kotlin/
-│   │   │   └── com/
-│   │   │       └── lukehemmin/
-│   │   │           └── lukeVanillaVelocity/
-│   │   │               ├── commands/
-│   │   │               └── ...
-│   │   ├── resources/
-│   │   └── templates/
-│   └── test/
+│   └── main/
+│       ├── kotlin/
+│       │   └── com/
+│       │       └── lukehemmin/
+│       │           ├── lukeVanillaVelocity/
+│       │           │   ├── commands/
+│       │           │   │   └── MessageCommand.kt
+│       │           │   ├── LukeVanillaVelocity.kt
+│       │           │   ├── ServerStatusManager.kt
+│       │           │   ├── PlayerConnectionListener.kt
+│       │           │   ├── ServerStatusMessageListener.kt
+│       │           │   └── ServerToProxyMessageListener.kt
+│       │           └── lukepaper/
+│       │               └── LukePaperPlugin.kt
+│       └── resources/
+│           ├── paper-plugin.yml
+│           └── velocity-plugin.json
 ├── template/
 │   └── lukevanillapaper/
+│       ├── SendMessageCommand.java
 │       ├── messaging/
-│       └── ...
+│       │   ├── MessageFormat.java
+│       │   └── MessageReceiver.java
+│       └── LukeVanillaPaper.java
 ├── wiki/
+│   ├── installation.md
+│   ├── user-guide.md
+│   ├── developer-api.md
+│   ├── testing.md
+│   └── project-structure.md
 ├── build.gradle.kts
+├── settings.gradle.kts
+├── velocity-example.toml
 └── README.md
 ```
 
 ## Velocity 플러그인 구조
 
-### 주요 패키지 및 클래스
+### 핵심 클래스
 
-```
-com.lukehemmin.lukeVanillaVelocity/
-├── LukeVanillaVelocity.kt          # 메인 플러그인 클래스
-├── ServerToProxyMessageListener.kt # 서버→프록시 메시지 리스너
-├── commands/
-│   └── MessageCommand.kt           # 메시지 전송 명령어
-└── BuildConstants.java             # 빌드 상수 (템플릿에서 생성됨)
-```
+#### LukeVanillaVelocity.kt
 
-### 주요 클래스 설명
+메인 플러그인 클래스로, 다음과 같은 역할을 합니다:
 
-#### `LukeVanillaVelocity`
-
-메인 플러그인 클래스로, 다음 기능을 제공합니다:
-
-- 플러그인 초기화 및 채널 등록
+- 플러그인 초기화 및 등록
+- 메시징 채널 관리
+- 서버 상태 관리자 초기화
+- 메시지 전송 메서드 제공
 - 명령어 등록
-- 서버 간 메시지 라우팅
-- 프록시에서 서버로 메시지 전송
 
 ```kotlin
 @Plugin(
     id = "lukevanilla-velocity", 
     name = "LukeVanilla-Velocity", 
     version = BuildConstants.VERSION,
-    // ...
+    description = "Minecraft 서버 간 메시징을 위한 Velocity 플러그인",
+    authors = ["LukeHemmin"]
 )
 class LukeVanillaVelocity @Inject constructor(
     private val server: ProxyServer,
     private val logger: Logger,
     private val commandManager: CommandManager
 ) {
-    // 메시징 채널 식별자
+    // 서버 간 메시징을 위한 채널 식별자
     private val messagingChannel: ChannelIdentifier = MinecraftChannelIdentifier.create("custom", "msg")
     
-    // ...
+    // 서버 상태 관리자
+    private lateinit var serverStatusManager: ServerStatusManager
+    
+    // 기타 메서드...
 }
 ```
 
-#### `ServerToProxyMessageListener`
+#### ServerStatusManager.kt
 
-서버에서 프록시로 전송된 메시지를 처리하고 대상 서버로 라우팅하는 리스너 클래스입니다.
+서버 상태를 관리하고 플레이어 라우팅을 담당하는 클래스입니다:
+
+- 서버 상태 모니터링
+- ping/pong 메커니즘을 통한 서버 상태 확인
+- 플레이어 연결 관리
+- 서버 상태 변경 시 플레이어 이동
+
+```kotlin
+class ServerStatusManager(
+    private val plugin: LukeVanillaVelocity,
+    private val server: ProxyServer,
+    private val logger: Logger
+) {
+    // 서버 상태 확인을 위한 채널 식별자
+    private val statusChannel = MinecraftChannelIdentifier.create("custom", "status")
+    
+    // 서버 상태 저장 맵 (서버명 -> 상태)
+    private val serverStatus = ConcurrentHashMap<String, Boolean>()
+    
+    // 기타 속성 및 메서드...
+}
+```
+
+#### ServerStatusMessageListener.kt
+
+서버 상태 메시지(ping/pong)를 처리하는 리스너 클래스입니다:
+
+- 상태 채널 메시지 수신
+- pong 메시지 처리
+- 서버 상태 업데이트
+
+```kotlin
+class ServerStatusMessageListener(
+    private val plugin: LukeVanillaVelocity,
+    private val statusManager: ServerStatusManager
+) {
+    // 상태 확인을 위한 채널 식별자
+    private val statusChannel = MinecraftChannelIdentifier.create("custom", "status")
+    
+    // 기타 메서드...
+}
+```
+
+#### PlayerConnectionListener.kt
+
+플레이어 연결 이벤트를 처리하는 리스너 클래스입니다:
+
+- 초기 서버 연결 처리
+- 서버 상태에 따른 플레이어 라우팅
+
+```kotlin
+class PlayerConnectionListener(
+    private val plugin: LukeVanillaVelocity,
+    private val statusManager: ServerStatusManager
+) {
+    // 기타 메서드...
+}
+```
+
+#### ServerToProxyMessageListener.kt
+
+서버 간 메시지 전송을 처리하는 리스너 클래스입니다:
+
+- 메시지 채널 리스닝
+- 메시지 디코딩
+- 목적지 서버로 메시지 라우팅
 
 ```kotlin
 class ServerToProxyMessageListener(private val plugin: LukeVanillaVelocity) {
-    
+    // 메시징에 사용되는 채널 식별자
     private val messagingChannel = MinecraftChannelIdentifier.create("custom", "msg")
     
-    @Subscribe
-    fun onPluginMessage(event: PluginMessageEvent) {
-        // 메시지 처리 및 라우팅 로직
-    }
-    
-    private fun handleMessage(event: PluginMessageEvent) {
-        // 메시지 디코딩 및 전달 로직
-    }
+    // 기타 메서드...
 }
 ```
 
-#### `MessageCommand`
+#### 명령어 클래스
 
-프록시에서 특정 서버로 메시지를 전송하는 명령어를 처리합니다.
+`commands` 패키지에는 플러그인에서 제공하는 명령어 클래스들이 포함되어 있습니다:
+
+- `MessageCommand.kt`: 메시지 전송 명령어 처리
 
 ```kotlin
-class MessageCommand(private val plugin: LukeVanillaVelocity) : SimpleCommand {
+class MessageCommand(private val plugin: LukeVanillaVelocity) 
+    : SimpleCommand {
     
     override fun execute(invocation: SimpleCommand.Invocation) {
-        // 명령어 실행 로직
+        // 명령어 처리 로직...
     }
     
-    override fun hasPermission(source: CommandSource): Boolean {
-        return source.hasPermission("lukevanilla.command.sendmessage")
-    }
-    
-    override fun suggest(invocation: SimpleCommand.Invocation): List<String> {
-        // 자동 완성 로직
-    }
+    // 기타 메서드...
 }
 ```
 
 ## Paper 플러그인 구조
 
-### 주요 패키지 및 클래스
+### 핵심 클래스
 
-```
-com.lukehemmin.lukevanillapaper/
-├── LukeVanillaPaper.java              # 메인 플러그인 클래스
-├── SendMessageCommand.java            # 메시지 전송 명령어
-└── messaging/
-    ├── MessagingService.java          # 메시징 서비스
-    └── MessageReceivedEvent.java      # 메시지 수신 이벤트
-```
+#### LukePaperPlugin.kt
 
-### 주요 클래스 설명
+Paper 서버 측 플러그인의 메인 클래스입니다:
 
-#### `LukeVanillaPaper`
-
-Paper 플러그인의 메인 클래스로, 다음 기능을 제공합니다:
-
-- 플러그인 초기화 및 종료 처리
-- 메시징 서비스 관리
-- 명령어 등록
-
-```java
-public class LukeVanillaPaper extends JavaPlugin {
-    
-    private MessagingService messagingService;
-    
-    @Override
-    public void onEnable() {
-        // 초기화 로직
-    }
-    
-    @Override
-    public void onDisable() {
-        // 종료 로직
-    }
-    
-    // 유틸리티 메서드
-}
-```
-
-#### `MessagingService`
-
-메시지 송수신을 처리하는 핵심 서비스 클래스입니다.
-
-```java
-public class MessagingService implements PluginMessageListener {
-    
-    public static final String MESSAGING_CHANNEL = "custom:msg";
-    
-    private final LukeVanillaPaper plugin;
-    
-    // 채널 등록/해제 메서드
-    
-    // 메시지 전송 메서드
-    
-    @Override
-    public void onPluginMessageReceived(String channel, Player player, byte[] message) {
-        // 메시지 수신 및 처리 로직
-    }
-}
-```
-
-#### `MessageReceivedEvent`
-
-프록시나 다른 서버에서 메시지가 수신되면 발생하는 이벤트입니다.
-
-```java
-public class MessageReceivedEvent extends Event {
-    
-    private static final HandlerList HANDLERS = new HandlerList();
-    private final LukeVanillaPaper plugin;
-    private final String message;
-    
-    // 생성자 및 접근자 메서드
-    
-    @Override
-    public HandlerList getHandlers() {
-        return HANDLERS;
-    }
-    
-    public static HandlerList getHandlerList() {
-        return HANDLERS;
-    }
-}
-```
-
-#### `SendMessageCommand`
-
-서버에서 다른 서버로 메시지를 전송하는 명령어를 처리합니다.
-
-```java
-public class SendMessageCommand implements CommandExecutor, TabCompleter {
-    
-    private final LukeVanillaPaper plugin;
-    
-    // 명령어 실행 및 자동 완성 로직
-}
-```
-
-## 메시징 프로토콜
-
-### 프록시 → 서버 메시지 형식
-
-```
-[메시지길이(int)][메시지내용(byte[])]
-```
-
-1. `메시지길이`: 메시지 내용의 바이트 수를 나타내는 4바이트 정수
-2. `메시지내용`: UTF-8 인코딩된 메시지 텍스트
-
-### 서버 → 서버 메시지 형식
-
-```
-[목적지서버명길이(int)][목적지서버명(byte[])][메시지길이(int)][메시지내용(byte[])]
-```
-
-1. `목적지서버명길이`: 대상 서버 이름의 바이트 수를 나타내는 4바이트 정수
-2. `목적지서버명`: UTF-8 인코딩된 대상 서버 이름
-3. `메시지길이`: 메시지 내용의 바이트 수를 나타내는 4바이트 정수
-4. `메시지내용`: UTF-8 인코딩된 메시지 텍스트
-
-### 코드 예시: 메시지 인코딩 (서버 → 서버)
-
-```java
-ByteArrayDataOutput out = ByteStreams.newDataOutput();
-byte[] targetServerBytes = targetServer.getBytes(StandardCharsets.UTF_8);
-
-// 대상 서버 이름 길이와 내용 작성
-out.writeInt(targetServerBytes.length);
-out.write(targetServerBytes);
-
-// 메시지 길이와 내용 작성
-byte[] messageBytes = message.getBytes(StandardCharsets.UTF_8);
-out.writeInt(messageBytes.length);
-out.write(messageBytes);
-
-// 전송할 최종 바이트 배열
-byte[] finalData = out.toByteArray();
-```
-
-### 코드 예시: 메시지 디코딩 (프록시에서)
+- 플러그인 메시지 채널 등록
+- 메시지 수신 및 처리
+- 다른 서버로 메시지 전송
+- ping/pong 응답 처리
 
 ```kotlin
-val buf = Unpooled.wrappedBuffer(data)
-
-try {
-    // 목적지 서버 이름 읽기
-    val targetServerNameLength = buf.readInt()
-    val targetServerNameBytes = ByteArray(targetServerNameLength)
-    buf.readBytes(targetServerNameBytes)
-    val targetServerName = String(targetServerNameBytes, StandardCharsets.UTF_8)
+class LukePaperPlugin : JavaPlugin(), PluginMessageListener {
+    // 메시징 채널
+    private val MESSAGING_CHANNEL = "custom:msg"
+    // 상태 확인 채널
+    private val STATUS_CHANNEL = "custom:status"
     
-    // 메시지 내용 읽기 
-    val remainingBytes = ByteArray(buf.readableBytes())
-    buf.readBytes(remainingBytes)
-    
-    // 메시지 처리 로직
-    // ...
-} finally {
-    buf.release()
+    // 기타 메서드...
 }
 ```
+
+## 핵심 컴포넌트
+
+### 메시징 시스템
+
+LukeVanilla-Velocity의 메시징 시스템은 Minecraft의 Plugin Messaging Channel을 기반으로 합니다. 메시지 구조는 다음과 같습니다:
+
+1. **서버 간 메시지 포맷**:
+   ```
+   [목적지서버명 길이(int)][목적지서버명(UTF-8)][메시지 길이(int)][메시지 내용(UTF-8)]
+   ```
+
+2. **상태 메시지 포맷**:
+   ```
+   [메시지 길이(int)][메시지 내용(UTF-8)]
+   ```
+
+메시지 전송 흐름은 다음과 같습니다:
+
+1. **서버 → 프록시 → 서버**:
+   - 출발지 서버: 메시지 인코딩 및 전송
+   - 프록시: 메시지 수신, 디코딩, 목적지 확인, 재전송
+   - 목적지 서버: 메시지 수신 및 처리
+
+2. **프록시 → 서버**:
+   - 프록시: 메시지 인코딩 및 전송
+   - 서버: 메시지 수신 및 처리
+
+### 서버 상태 관리 시스템
+
+서버 상태 관리 시스템은 다음과 같이 작동합니다:
+
+1. **상태 확인 메커니즘**:
+   - 프록시: 30초마다 survival 서버에 ping 메시지 전송
+   - 서버: ping 메시지를 수신하고 pong으로 응답
+   - 프록시: pong 응답 수신 시 서버를 온라인으로 표시
+
+2. **타임아웃 처리**:
+   - 5초 내에 pong 응답이 없으면 서버를 오프라인으로 표시
+
+3. **플레이어 라우팅**:
+   - 플레이어 접속 시 서버 상태에 따라 적절한 서버로 연결
+   - survival 서버가 온라인으로 전환되면 lobby에 있는 플레이어를 자동으로 이동
 
 ## 빌드 시스템
 
-LukeVanilla 프로젝트는 Gradle을 사용하여 빌드됩니다.
+프로젝트는 Gradle을 사용하여 빌드됩니다. 주요 빌드 파일은 다음과 같습니다:
 
 ### build.gradle.kts
 
 ```kotlin
 plugins {
-    kotlin("jvm") version "2.0.20-Beta1"
-    kotlin("kapt") version "2.0.20-Beta1"
-    id("com.github.johnrengelman.shadow") version "8.1.1"
-    // ...
+    kotlin("jvm") version "1.6.0"
+    id("com.github.johnrengelman.shadow") version "7.1.0"
+}
+
+group = "com.lukehemmin"
+version = "1.0.0"
+
+repositories {
+    mavenCentral()
+    maven("https://repo.papermc.io/repository/maven-public/")
+    maven("https://repo.velocitypowered.com/snapshots/")
 }
 
 dependencies {
-    compileOnly("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
-    kapt("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
-    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    // Velocity API
+    compileOnly("com.velocitypowered:velocity-api:3.2.0")
+    kapt("com.velocitypowered:velocity-api:3.2.0")
     
-    // Paper API (테스트용)
-    compileOnly("io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT")
+    // Paper API
+    compileOnly("io.papermc.paper:paper-api:1.19.4-R0.1-SNAPSHOT")
+    
+    // 기타 의존성...
 }
 
-tasks {
-    runVelocity {
-        velocityVersion("3.4.0-SNAPSHOT")
-    }
-    
-    shadowJar {
-        archiveClassifier.set("")
-    }
-}
+// 빌드 태스크...
 ```
 
-### 템플릿 시스템
-
-빌드 시 `src/main/templates` 디렉토리의 템플릿 파일이 처리되어 빌드 정보가 포함된 클래스를 생성합니다.
+### settings.gradle.kts
 
 ```kotlin
-val templateSource = file("src/main/templates")
-val templateDest = layout.buildDirectory.dir("generated/sources/templates")
-val generateTemplates = tasks.register<Copy>("generateTemplates") {
-    val props = mapOf("version" to project.version)
-    inputs.properties(props)
-
-    from(templateSource)
-    into(templateDest)
-    expand(props)
-}
-
-sourceSets.main.configure { java.srcDir(generateTemplates.map { it.outputs }) }
+rootProject.name = "LukeVanilla-Velocity"
 ```
 
-## 확장 가능성
+## 템플릿 사용법
 
-LukeVanilla 메시징 시스템은 다양한 방향으로 확장 가능하게 설계되었습니다.
+`template` 디렉토리에는 Paper 서버용 플러그인을 개발할 때 사용할 수 있는 템플릿 코드가 포함되어 있습니다.
 
-### 추가 가능한 기능
+### 기본 템플릿 구조
 
-1. **메시지 유형 분류**: 메시지에 유형 필드를 추가하여 다양한 종류의 메시지를 지원
-
-```java
-public enum MessageType {
-    CHAT, COMMAND, BROADCAST, DATA, SYSTEM
-}
-
-// 메시지 형식:
-// [유형(byte)][목적지서버명길이(int)][목적지서버명(byte[])][메시지길이(int)][메시지내용(byte[])]
+```
+template/
+└── lukevanillapaper/
+    ├── SendMessageCommand.java
+    ├── messaging/
+    │   ├── MessageFormat.java
+    │   └── MessageReceiver.java
+    └── LukeVanillaPaper.java
 ```
 
-2. **메시지 우선순위**: 중요한 메시지가 먼저 처리되도록 우선순위 시스템 추가
+### 템플릿 사용 방법
+
+1. `template/lukevanillapaper` 디렉토리의 내용을 새 Paper 플러그인 프로젝트로 복사합니다.
+2. 패키지 이름과 클래스 이름을 필요에 따라 수정합니다.
+3. 필요한 기능을 추가하거나 수정합니다.
+
+### 템플릿 클래스 설명
+
+#### LukeVanillaPaper.java
+
+Paper 서버 플러그인의 메인 클래스 템플릿입니다.
 
 ```java
-public enum MessagePriority {
-    LOW, NORMAL, HIGH, CRITICAL
+public class LukeVanillaPaper extends JavaPlugin implements PluginMessageListener {
+    // 메시징 채널
+    private static final String MESSAGING_CHANNEL = "custom:msg";
+    // 상태 확인 채널
+    private static final String STATUS_CHANNEL = "custom:status";
+    
+    // 기타 메서드...
 }
-
-// 메시지를 우선순위에 따라 서로 다른 큐에 저장하고 처리
 ```
 
-3. **메시지 압축**: 대용량 메시지 지원을 위한 압축 기능
+#### SendMessageCommand.java
+
+메시지 전송 명령어 처리 클래스 템플릿입니다.
 
 ```java
-// 메시지 크기가 지정된 임계값을 초과하는 경우에만 압축 적용
-if (messageBytes.length > COMPRESSION_THRESHOLD) {
-    messageBytes = compressBytes(messageBytes);
-    isCompressed = true;
+public class SendMessageCommand implements CommandExecutor {
+    private final LukeVanillaPaper plugin;
+    
+    // 기타 메서드...
 }
-
-// 메시지 헤더에 압축 여부 플래그 추가
-out.writeBoolean(isCompressed);
 ```
 
-4. **전송 확인 및 재시도 메커니즘**: 중요한 메시지의 신뢰성 보장
+#### messaging/MessageFormat.java
+
+메시지 형식 및 인코딩/디코딩 유틸리티 클래스 템플릿입니다.
 
 ```java
-// 각 메시지에 고유 ID 할당
-String messageId = UUID.randomUUID().toString();
-
-// 수신 확인 메시지 처리
-if (message.startsWith("ACK:")) {
-    String ackId = message.substring(4);
-    pendingMessages.remove(ackId);
-    return;
-}
-
-// 주기적으로 미확인 메시지 재전송
-scheduler.runTaskTimerAsynchronously(plugin, () -> {
-    for (Map.Entry<String, PendingMessage> entry : pendingMessages.entrySet()) {
-        if (System.currentTimeMillis() - entry.getValue().timestamp > RETRY_TIMEOUT) {
-            sendMessage(entry.getValue());
-            entry.getValue().attempts++;
-        }
+public class MessageFormat {
+    /**
+     * 메시지를 인코딩합니다.
+     */
+    public static byte[] encodeMessage(String targetServer, String message) {
+        // 인코딩 로직...
     }
-}, RETRY_CHECK_INTERVAL, RETRY_CHECK_INTERVAL);
-```
-
-### 구조 확장
-
-1. **서비스 계층 추가**: 메시징 로직을 서비스 계층으로 분리하여 코드 구조 개선
-
-```
-com.lukehemmin.lukeVanillaVelocity/
-├── LukeVanillaVelocity.kt
-├── api/
-│   └── MessagingAPI.kt           # 공개 API 인터페이스
-├── services/
-│   ├── MessagingService.kt       # 메시징 서비스 구현
-│   └── MessageRouter.kt          # 메시지 라우팅 서비스
-├── listeners/
-│   └── ServerToProxyMessageListener.kt
-├── commands/
-│   └── MessageCommand.kt
-└── models/
-    ├── Message.kt                # 메시지 모델 클래스
-    └── MessageType.kt            # 메시지 유형 열거형
-```
-
-2. **플러그인 확장 시스템**: 타 플러그인에서 확장할 수 있는 API 제공
-
-```kotlin
-interface MessagingExtension {
-    fun onMessageReceived(message: Message): Boolean
-    fun processOutgoingMessage(message: Message): Message
-}
-
-// 확장 등록 메서드
-fun registerExtension(extension: MessagingExtension) {
-    extensions.add(extension)
-}
-
-// 메시지 처리 시 확장 기능 호출
-fun processMessage(message: Message): Boolean {
-    for (extension in extensions) {
-        if (extension.onMessageReceived(message)) {
-            return true // 메시지가 처리됨
-        }
+    
+    /**
+     * 메시지를 디코딩합니다.
+     */
+    public static MessageData decodeMessage(byte[] data) {
+        // 디코딩 로직...
     }
-    // 기본 처리 로직
-    return false
+    
+    // 기타 메서드 및 내부 클래스...
 }
 ```
 
-이러한 확장 가능성을 통해 LukeVanilla 메시징 시스템은 네트워크 규모와 요구 사항이 증가함에 따라 유연하게 확장할 수 있습니다. 
+#### messaging/MessageReceiver.java
+
+메시지 수신 처리 클래스 템플릿입니다.
+
+```java
+public class MessageReceiver {
+    private final LukeVanillaPaper plugin;
+    
+    /**
+     * 수신된 메시지를 처리합니다.
+     */
+    public void handleMessage(String message) {
+        // 메시지 처리 로직...
+    }
+    
+    // 기타 메서드...
+}
+```
+
+이러한 템플릿을 기반으로 커스텀 Paper 서버 플러그인을 쉽게 개발할 수 있습니다. 템플릿은 기본적인 메시징 기능과 상태 확인 기능을 포함하고 있으며, 필요에 따라 확장할 수 있습니다. 

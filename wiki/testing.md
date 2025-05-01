@@ -1,501 +1,505 @@
 # 테스트 및 디버깅 가이드
 
-이 가이드는 LukeVanilla 메시징 시스템의 테스트, 디버깅 및 문제 해결에 대한 정보를 제공합니다.
+LukeVanilla-Velocity 시스템의 테스트 및 디버깅 방법에 대한 상세한 안내입니다.
+
+- [설치 및 설정 가이드로 이동](installation.md)
+- [사용자 가이드로 이동](user-guide.md)
+- [개발자 API 문서로 이동](developer-api.md)
+- [프로젝트 구조로 이동](project-structure.md)
 
 ## 목차
 
-- [테스트 환경 설정](#테스트-환경-설정)
-- [기본 기능 테스트](#기본-기능-테스트)
-- [로그 분석](#로그-분석)
-- [일반적인 문제 해결](#일반적인-문제-해결)
-- [성능 테스트](#성능-테스트)
-- [보안 테스트](#보안-테스트)
+1. [테스트 환경 구성](#테스트-환경-구성)
+2. [로깅 및 디버깅](#로깅-및-디버깅)
+3. [일반적인 문제 해결](#일반적인-문제-해결)
+4. [성능 모니터링](#성능-모니터링)
+5. [테스트 자동화](#테스트-자동화)
+6. [버전 호환성 테스트](#버전-호환성-테스트)
 
-## 테스트 환경 설정
+## 테스트 환경 구성
 
-효과적인 테스트를 위해 로컬 개발 환경을 설정하는 방법을 설명합니다.
+### 로컬 테스트 환경 설정
 
-### 로컬 테스트 서버 설정
+로컬 테스트 환경을 구성하는 방법은 다음과 같습니다:
 
-#### 1. 디렉토리 구조 생성
+1. **필요한 서버 구성**:
+   - 1x Velocity 프록시 서버 (포트 25577)
+   - 1x Paper "survival" 서버 (포트 25565)
+   - 1x Paper "lobby" 서버 (포트 25566)
 
-```
-testing/
-├── velocity/
-│   ├── plugins/
-│   │   └── LukeVanilla-Velocity-1.0-SNAPSHOT-all.jar
-│   └── velocity.toml
-├── server1/
-│   ├── plugins/
-│   │   └── LukeVanilla-Paper-1.0-SNAPSHOT.jar
-│   └── server.properties
-├── server2/
-│   ├── plugins/
-│   │   └── LukeVanilla-Paper-1.0-SNAPSHOT.jar
-│   └── server.properties
-└── start.bat (또는 start.sh)
-```
+2. **디렉토리 구조 예시**:
+   ```
+   minecraft-test-environment/
+   ├── velocity/
+   │   ├── velocity.jar
+   │   ├── plugins/
+   │   │   └── lukevanilla-velocity-1.0.0.jar
+   │   └── velocity.toml
+   ├── survival/
+   │   ├── paper.jar
+   │   ├── plugins/
+   │   │   └── lukepaper-1.0.0.jar
+   │   └── server.properties
+   └── lobby/
+       ├── paper.jar
+       ├── plugins/
+       │   └── lukepaper-1.0.0.jar
+       └── server.properties
+   ```
 
-#### 2. Velocity 설정 (velocity.toml)
+3. **서버 스크립트 예시**:
 
-```toml
-# velocity.toml
+   Linux/macOS 시작 스크립트 (`start.sh`):
 
-# 기본 서버 설정
-bind = "0.0.0.0:25577"
-motd = "LukeVanilla Test Server"
-show-max-players = 100
-online-mode = true
-force-key-authentication = true
-player-info-forwarding-mode = "modern"
+   ```bash
+   #!/bin/bash
 
-# 중요: 플러그인 메시지 채널을 활성화합니다
-bungee-plugin-message-channel = true
+   # 디렉토리 경로 설정
+   BASE_DIR="$(pwd)"
+   VELOCITY_DIR="${BASE_DIR}/velocity"
+   SURVIVAL_DIR="${BASE_DIR}/survival"
+   LOBBY_DIR="${BASE_DIR}/lobby"
 
-[servers]
-  [servers.server1]
-    address = "127.0.0.1:25565"
-    
-  [servers.server2]
-    address = "127.0.0.1:25566"
+   # 서버 시작 함수
+   start_server() {
+       local name=$1
+       local dir=$2
+       local jar=$3
+       local args=$4
 
-[forced-hosts]
-  "server1.localhost" = "server1"
-  "server2.localhost" = "server2"
+       echo "Starting ${name} server..."
+       cd "${dir}" || exit
+       java -Xms512M -Xmx512M ${args} -jar "${jar}" nogui &
+       cd "${BASE_DIR}" || exit
+   }
 
-[advanced]
-  compression-threshold = 256
-  compression-level = 6
-  login-ratelimit = 3000
-  connection-timeout = 5000
-  read-timeout = 30000
-```
+   # 백엔드 서버 먼저 시작
+   start_server "lobby" "${LOBBY_DIR}" "paper.jar" ""
+   sleep 5
+   start_server "survival" "${SURVIVAL_DIR}" "paper.jar" ""
+   sleep 5
 
-#### 3. Paper 서버 설정 (server.properties)
+   # 프록시 서버 시작
+   start_server "Velocity" "${VELOCITY_DIR}" "velocity.jar" ""
 
-**server1/server.properties**:
-```properties
-server-port=25565
-online-mode=false
-velocity-support=true
-velocity-secret=your_secret_key_here
-```
+   echo "모든 서버가 시작되었습니다."
+   ```
 
-**server2/server.properties**:
-```properties
-server-port=25566
-online-mode=false
-velocity-support=true
-velocity-secret=your_secret_key_here
-```
+   Windows 시작 스크립트 (`start.bat`):
 
-#### 4. LukeVanilla-Paper 설정 (config.yml)
+   ```batch
+   @echo off
+   setlocal
 
-**server1/plugins/LukeVanilla-Paper/config.yml**:
+   :: 디렉토리 경로 설정
+   set BASE_DIR=%cd%
+   set VELOCITY_DIR=%BASE_DIR%\velocity
+   set SURVIVAL_DIR=%BASE_DIR%\survival
+   set LOBBY_DIR=%BASE_DIR%\lobby
+
+   :: 백엔드 서버 먼저 시작
+   echo Starting lobby server...
+   start "Lobby Server" /D "%LOBBY_DIR%" java -Xms512M -Xmx512M -jar paper.jar nogui
+   timeout /t 5 /nobreak > nul
+
+   echo Starting survival server...
+   start "Survival Server" /D "%SURVIVAL_DIR%" java -Xms512M -Xmx512M -jar paper.jar nogui
+   timeout /t 5 /nobreak > nul
+
+   :: 프록시 서버 시작
+   echo Starting Velocity server...
+   start "Velocity Server" /D "%VELOCITY_DIR%" java -Xms512M -Xmx512M -jar velocity.jar
+
+   echo 모든 서버가 시작되었습니다.
+   endlocal
+   ```
+
+4. **서버 설정 검증**:
+   - 모든 서버가 올바른 포트에서 실행되는지 확인
+   - Velocity에서 모든 백엔드 서버가 등록되었는지 확인
+   - 플러그인이 모든 서버에 제대로 로드되었는지 확인
+
+### Docker 테스트 환경 (선택 사항)
+
+Docker를 사용하여 테스트 환경을 구성할 수도 있습니다:
+
+1. **Docker Compose 파일 예시** (`docker-compose.yml`):
+
 ```yaml
-server-name: "server1"
-servers:
-  - "server1"
-  - "server2"
-messaging:
-  debug: true
+version: '3'
+
+services:
+  velocity:
+    image: itzg/minecraft-server
+    environment:
+      TYPE: VELOCITY
+      VELOCITY_SECRET: your_secret_key
+    ports:
+      - "25577:25577"
+    volumes:
+      - ./velocity-data:/server
+      - ./plugins/velocity:/server/plugins
+    depends_on:
+      - survival
+      - lobby
+
+  survival:
+    image: itzg/minecraft-server
+    environment:
+      TYPE: PAPER
+      EULA: "TRUE"
+      SERVER_PORT: 25565
+      ONLINE_MODE: "FALSE"
+      VELOCITY_SECRET: your_secret_key
+    volumes:
+      - ./survival-data:/data
+      - ./plugins/paper:/data/plugins
+
+  lobby:
+    image: itzg/minecraft-server
+    environment:
+      TYPE: PAPER
+      EULA: "TRUE"
+      SERVER_PORT: 25566
+      ONLINE_MODE: "FALSE"
+      VELOCITY_SECRET: your_secret_key
+    volumes:
+      - ./lobby-data:/data
+      - ./plugins/paper:/data/plugins
 ```
 
-**server2/plugins/LukeVanilla-Paper/config.yml**:
-```yaml
-server-name: "server2"
-servers:
-  - "server1"
-  - "server2"
-messaging:
-  debug: true
-```
-
-#### 5. 시작 스크립트 (Windows용 start.bat)
-
-```batch
-@echo off
-echo 테스트 환경을 시작합니다...
-
-start "Velocity" /D "%~dp0velocity" java -Xms512M -Xmx512M -jar velocity.jar
-
-timeout /t 5
-
-start "Server1" /D "%~dp0server1" java -Xms1G -Xmx1G -jar paper.jar nogui
-start "Server2" /D "%~dp0server2" java -Xms1G -Xmx1G -jar paper.jar nogui
-
-echo 모든 서버가 시작되었습니다!
-```
-
-#### 6. 시작 스크립트 (Linux/Mac용 start.sh)
+2. **Docker 환경 시작**:
 
 ```bash
-#!/bin/bash
-echo "테스트 환경을 시작합니다..."
-
-cd velocity
-java -Xms512M -Xmx512M -jar velocity.jar &
-VELOCITY_PID=$!
-
-sleep 5
-
-cd ../server1
-java -Xms1G -Xmx1G -jar paper.jar nogui &
-SERVER1_PID=$!
-
-cd ../server2
-java -Xms1G -Xmx1G -jar paper.jar nogui &
-SERVER2_PID=$!
-
-echo "모든 서버가 시작되었습니다!"
-echo "Velocity PID: $VELOCITY_PID"
-echo "Server1 PID: $SERVER1_PID"
-echo "Server2 PID: $SERVER2_PID"
+docker-compose up -d
 ```
 
-## 기본 기능 테스트
+## 로깅 및 디버깅
 
-메시징 시스템의 기본 기능을 테스트하는 방법입니다.
+### 로그 레벨 조정
 
-### 테스트 1: 프록시 → 서버 메시지
+디버깅을 위해 로그 레벨을 조정할 수 있습니다. Velocity와 Paper 모두 Log4j2를 사용합니다.
 
-1. Velocity 프록시에 관리자로 로그인합니다.
-2. 다음 명령어를 실행합니다:
-   ```
-   /sendmessage server1 테스트 메시지입니다
-   ```
-3. server1에서 메시지가 수신되는지 확인합니다.
-4. 서버 로그에서 디버그 메시지를 확인합니다.
+#### Velocity 로그 레벨 조정
 
-### 테스트 2: 서버 → 서버 메시지
+`velocity/log4j2.xml` 파일을 생성하거나 수정합니다:
 
-1. server1에 관리자로 로그인합니다.
-2. 다음 명령어를 실행합니다:
-   ```
-   /sendmessage server2 server1에서 보낸 테스트 메시지입니다
-   ```
-3. server2에서 메시지가 수신되는지 확인합니다.
-4. 양쪽 서버의 로그에서 디버그 메시지를 확인합니다.
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Configuration status="WARN">
+    <Appenders>
+        <Console name="Console" target="SYSTEM_OUT">
+            <PatternLayout pattern="%highlight{[%d{HH:mm:ss} %level]: %msg%n}"/>
+        </Console>
+        <RollingRandomAccessFile name="File" fileName="logs/latest.log" filePattern="logs/%d{yyyy-MM-dd}-%i.log.gz">
+            <PatternLayout pattern="[%d{HH:mm:ss}] [%t/%level]: %msg%n"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy/>
+                <OnStartupTriggeringPolicy/>
+            </Policies>
+        </RollingRandomAccessFile>
+    </Appenders>
+    <Loggers>
+        <!-- LukeVanilla 로그 레벨을 DEBUG로 설정 -->
+        <Logger name="com.lukehemmin.lukeVanillaVelocity" level="debug" additivity="false">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="File"/>
+        </Logger>
+        <Root level="info">
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="File"/>
+        </Root>
+    </Loggers>
+</Configuration>
+```
 
-### 테스트 3: 권한 확인
+#### Paper 로그 레벨 조정
 
-1. 권한이 없는 일반 플레이어로 로그인합니다.
-2. 다음 명령어를 실행합니다:
-   ```
-   /sendmessage server2 테스트 메시지
-   ```
-3. 권한 거부 메시지가 표시되는지 확인합니다.
+`plugins/LukePaper/config.yml` 파일에 다음 설정을 추가:
 
-### 테스트 4: 존재하지 않는 서버 테스트
+```yaml
+# 디버그 모드 활성화
+debug: true
+```
 
-1. 관리자로 로그인합니다.
-2. 존재하지 않는 서버로 메시지를 전송합니다:
-   ```
-   /sendmessage nonexistent 이 메시지는 전송되지 않아야 합니다
-   ```
-3. 오류 메시지가 표시되는지 확인합니다.
+### 중요 로그 메시지 이해하기
 
-## 로그 분석
+#### 서버 상태 관련 로그
 
-디버그 모드에서 로그를 분석하여 문제를 식별하는 방법입니다.
+```
+[INFO] 서버 상태 관리자가 초기화되었습니다.
+[INFO] 서버 상태 확인 태스크가 시작되었습니다 (간격: 30000ms)
+[DEBUG] survival 서버로 ping 메시지 전송됨
+[DEBUG] survival 서버에서 pong 응답 수신됨
+[INFO] survival 서버 상태 변경됨: 온라인
+```
 
-### Velocity 로그 확인
+#### 메시지 전송 관련 로그
 
-Velocity 로그(`logs/latest.log`)에서 다음 항목을 확인합니다:
+```
+[DEBUG] 'survival' 서버로 메시지 전송 완료 (32 bytes)
+[INFO] 프록시에서 'survival' 서버로 메시지 전송: 안녕하세요!
+```
 
-1. 플러그인 초기화 메시지:
-   ```
-   [INFO] LukeVanilla-Velocity 메시징 시스템이 초기화되었습니다.
-   [INFO] 등록된 채널: custom:msg
-   ```
+#### 플레이어 라우팅 관련 로그
 
-2. 메시지 전송 관련 로그:
-   ```
-   [INFO] 프록시에서 'server1' 서버로 메시지 전송: 테스트 메시지
-   ```
+```
+[INFO] 플레이어 Player1의 초기 연결을 처리합니다.
+[INFO] 플레이어 Player1(을)를 survival 서버로 연결합니다.
+[INFO] 메인 서버가 온라인이 되어 로비의 플레이어 3명을 이동시킵니다.
+[INFO] 플레이어 Player2(을)를 survival 서버로 이동시킵니다.
+```
 
-3. 오류 메시지:
-   ```
-   [ERROR] 대상 서버를 찾을 수 없습니다: nonexistent
-   [ERROR] 메시지 전송 중 오류 발생: java.lang.Exception
-   ```
+### 오류 로그 분석
 
-### Paper 로그 확인
+#### 일반적인 오류 메시지와 해결 방법
 
-각 Paper 서버의 로그(`logs/latest.log`)에서 다음 항목을 확인합니다:
-
-1. 플러그인 초기화 메시지:
-   ```
-   [INFO] LukeVanilla-Paper 메시징 시스템이 초기화되었습니다.
-   [INFO] 서버 이름: server1
-   [INFO] 메시징 채널 등록 완료: custom:msg
-   ```
-
-2. 메시지 수신 관련 로그:
-   ```
-   [INFO] 프록시로부터 메시지 수신: 테스트 메시지입니다
-   ```
-
-3. 메시지 전송 관련 로그:
-   ```
-   [INFO] 'server2' 서버로 메시지 전송 완료 (34 bytes)
-   ```
-
-4. 오류 메시지:
-   ```
-   [SEVERE] 메시지 처리 중 오류 발생: java.lang.Exception
-   [WARNING] 메시지 전송 실패: 플레이어가 연결되어 있지 않습니다.
-   ```
-
-### 디버그 로그 활성화
-
-Paper 플러그인에서 더 자세한 디버그 로그를 활성화하려면:
-
-1. `plugins/LukeVanilla-Paper/config.yml` 파일에서 다음 설정을 수정합니다:
-   ```yaml
-   messaging:
-     debug: true
-   ```
-
-2. 서버를 재시작하거나 `/reload confirm` 명령어를 실행합니다.
+| 오류 메시지 | 가능한 원인 | 해결 방법 |
+|---|---|---|
+| `대상 서버를 찾을 수 없습니다: survival` | 서버가 velocity.toml에 등록되지 않음 | velocity.toml에 서버 설정 추가 |
+| `메시지 전송 중 오류 발생: Connection refused` | 대상 서버가 실행되지 않음 | 서버 시작 또는 네트워크 설정 확인 |
+| `잘못된 대상 서버 이름 길이: -1` | 메시지 형식 오류 | 메시지 생성 코드 확인 |
+| `메시지를 전송할 플레이어가 없습니다` | 서버에 플레이어가 없음 | 최소 한 명의 플레이어가 필요 |
+| `메인 서버(survival)를 찾을 수 없습니다` | 서버 이름 불일치 | velocity.toml과 플러그인 코드의 서버 이름 확인 |
 
 ## 일반적인 문제 해결
 
-### 문제 1: 메시지가 전송되지 않음
+### 연결 문제
 
-**증상**: 메시지를 전송했지만 대상 서버에서 수신되지 않습니다.
+#### 프록시-서버 연결 문제
 
-**해결 방법**:
+**증상**: 프록시가 백엔드 서버에 연결하지 못합니다.
 
-1. `velocity.toml`에서 `bungee-plugin-message-channel = true`로 설정되어 있는지 확인합니다.
-2. 대상 서버가 실행 중이고 Velocity에 정상적으로 연결되어 있는지 확인합니다:
-   ```
-   /server
-   ```
-3. Paper 서버의 `config.yml`에서 `server-name` 값이 Velocity의 서버 이름과 일치하는지 확인합니다.
-4. 서버 로그에서 오류 메시지를 확인합니다.
-
-### 문제 2: "플레이어가 연결되어 있지 않습니다" 오류
-
-**증상**: Paper 서버에서 메시지를 전송할 때 "플레이어가 연결되어 있지 않습니다" 오류가 발생합니다.
+**진단 절차**:
+1. Velocity 로그에서 연결 오류 확인
+2. 백엔드 서버가 실행 중인지 확인
+3. 포트 및 IP 주소 설정 확인
+4. 방화벽 설정 확인
 
 **해결 방법**:
+- velocity.toml의 서버 주소 및 포트 수정
+- 백엔드 서버 재시작
+- 방화벽 규칙 업데이트
 
-1. Paper 서버에 최소한 한 명의 플레이어가 접속해 있는지 확인합니다. (서버 간 메시지 전송에는 플레이어 연결이 필요합니다)
-2. 콘솔에서 명령어를 실행한 경우, 접속한 플레이어가 있는지 확인합니다.
-3. 플레이어가 없는 경우 대안 구현을 고려합니다:
-   - Redis 또는 다른 메시징 시스템 사용
-   - 주기적으로 서버 간 통신을 시도하는 대기 메커니즘 구현
+#### 플레이어 연결 문제
 
-### 문제 3: 권한 오류
+**증상**: 플레이어가 특정 서버로 연결되지 않습니다.
 
-**증상**: "해당 명령어를 실행할 권한이 없습니다" 오류가 표시됩니다.
-
-**해결 방법**:
-
-1. 플레이어에게 필요한 권한이 있는지 확인합니다:
-   ```
-   /lp user <playername> permission info
-   ```
-2. 필요한 경우 권한을 부여합니다:
-   ```
-   /lp user <playername> permission set lukevanilla.command.sendmessage true
-   ```
-
-### 문제 4: Paper 서버가 Velocity에 연결되지 않음
-
-**증상**: Paper 서버가 시작되지만 Velocity에 등록되지 않습니다.
+**진단 절차**:
+1. 로그에서 자동 라우팅 관련 메시지 확인
+2. 서버 상태가 올바르게 감지되었는지 확인
+3. 플레이어의 현재 서버 확인
 
 **해결 방법**:
+- `/checkserver <서버명>` 명령어로 서버 상태 수동 확인
+- 서버 상태 확인 간격 및 타임아웃 조정
+- 수동으로 플레이어를 서버로 이동 (`/server <서버명>`)
 
-1. `server.properties`에서 다음 설정을 확인합니다:
-   - `online-mode=false`
-   - `velocity-support=true`
-   - `velocity-secret=your_secret_key_here` (Velocity의 forwarding-secret과 일치해야 함)
-2. Velocity의 `velocity.toml`에서 서버 주소가 올바르게 구성되어 있는지 확인합니다.
-3. 방화벽 설정을 확인하여 서버 간 통신이 허용되는지 확인합니다.
+### 메시지 전송 문제
 
-## 성능 테스트
+#### 메시지가 서버에 도달하지 않음
 
-메시징 시스템의 성능을 테스트하고 최적화하는 방법입니다.
+**증상**: 한 서버에서 다른 서버로 메시지가 전송되지 않습니다.
 
-### 메시지 처리량 테스트
+**진단 절차**:
+1. 두 서버 모두에서 플러그인이 활성화되었는지 확인
+2. 메시지 채널이 올바르게 등록되었는지 확인
+3. 메시지 형식이 올바른지 확인
 
-다음 명령어를 사용하여 대량의 메시지를 전송하고 처리 시간을 측정합니다:
+**해결 방법**:
+- 두 서버에서 플러그인 재로드
+- velocity.toml에서 `bungee-plugin-message-channel = true` 확인
+- 메시지 인코딩 및 디코딩 로직 확인
 
-```
-/sendmessage server1 PERF_TEST_START
-(1초 대기)
-/sendmessage server1 PERF_TEST_STOP
-```
+#### 메시지 형식 오류
 
-서버 로그에서 처리 시간을 확인합니다:
-```
-[INFO] 성능 테스트 시작: system-time-millis
-[INFO] 성능 테스트 종료: system-time-millis
-[INFO] 총 처리 시간: elapsed-ms ms
-```
+**증상**: 메시지가 전송되지만 수신 측에서 파싱 오류가 발생합니다.
 
-### 메모리 사용량 모니터링
+**진단 절차**:
+1. 디버그 모드에서 원시 메시지 내용 확인
+2. 메시지 인코딩/디코딩 로직 검토
+3. 특수 문자 또는 길이 문제 확인
 
-1. 서버 시작 전과 대량의 메시지 전송 후 메모리 사용량을 비교합니다.
-2. 메모리 누수가 있는지 확인합니다.
-3. VisualVM 또는 JProfiler와 같은 도구를 사용하여 메모리 사용량을 분석합니다.
+**해결 방법**:
+- 메시지 길이 제한 준수
+- 특수 문자 처리 방식 수정
+- 버퍼 관리 코드 개선
 
-### 병렬 처리 테스트
+### 서버 상태 감지 문제
 
-여러 플레이어가 동시에 메시지를 전송할 때의 성능을 테스트합니다:
+#### 서버 상태가 올바르게 감지되지 않음
 
-1. 여러 플레이어가 동시에 로그인합니다.
-2. 각 플레이어가 다양한 대상 서버로 메시지를 전송합니다.
-3. 서버 TPS(Ticks Per Second)를 모니터링하여 성능 저하가 있는지 확인합니다.
+**증상**: 실행 중인 서버가 오프라인으로 표시되거나 그 반대의 경우가 발생합니다.
 
-## 보안 테스트
+**진단 절차**:
+1. ping/pong 메시지 교환 확인
+2. 응답 시간 및 타임아웃 설정 검토
+3. 네트워크 지연 측정
 
-메시징 시스템의 보안을 테스트하는 방법입니다.
+**해결 방법**:
+- `pingInterval` 및 `responseTimeout` A값 조정
+- 네트워크 연결 개선
+- 서버 상태 확인 로직 수정
 
-### 권한 우회 테스트
+## 성능 모니터링
 
-1. 권한이 없는 일반 플레이어로 로그인합니다.
-2. 다양한 방법으로 메시지 전송 명령어를 실행하려고 시도합니다.
-3. 모든 시도가 적절하게 차단되는지 확인합니다.
+### 리소스 사용량 모니터링
 
-### 메시지 내용 검증
+#### CPU 및 메모리 사용량
 
-1. 특수 문자나 매우 긴 메시지 등 다양한 형태의 메시지를 전송합니다.
-2. 시스템이 모든 입력을 올바르게 처리하는지 확인합니다.
-3. 메시지 길이 제한이 적용되는지 확인합니다.
+LukeVanilla-Velocity 시스템의 리소스 사용량을 모니터링하는 방법:
 
-### 서버 간 인증 테스트
+1. **Spark 플러그인 사용**:
+   - [Spark](https://www.spigotmc.org/resources/spark.57242/) 플러그인을 설치하여 CPU 및 메모리 사용량 모니터링
+   - `/spark profiler` 명령어로 프로파일링 수행
 
-1. 잘못된 `velocity-secret`을 사용하여 Paper 서버를 설정합니다.
-2. 서버가 Velocity에 연결되지 않고 보안 경고가 로그에 기록되는지 확인합니다.
+   ```
+   /spark profiler --timeout 30s
+   ```
 
-## 자동화된 테스트
+2. **플러그인 모니터링**:
+   - [Plan](https://www.spigotmc.org/resources/plan-player-analytics.32536/) 플러그인을 사용하여 서버 성능 및 플러그인 사용량 모니터링
 
-대규모 테스트나 정기적인 테스트를 위한 자동화 방법입니다.
+3. **서버 내 리소스 모니터링**:
+   - `/tps` 명령어로 서버 TPS 모니터링
+   - `/gc` 명령어로 가비지 컬렉션 수행 및 메모리 상태 확인
 
-### JUnit 테스트 작성
+### 네트워크 트래픽 분석
 
-플러그인 코드에 대한 단위 테스트 예시:
+1. **서버 간 메시지 양 확인**:
+   ```
+   [DEBUG] 'survival' 서버로 메시지 전송 완료 (32 bytes)
+   ```
 
-```java
-@Test
-public void testMessageFormatting() {
-    // 테스트 케이스 설정
-    String targetServer = "server1";
-    String message = "Test message";
-    
-    // 메시지 형식화 로직 테스트
-    ByteArrayDataOutput out = ByteStreams.newDataOutput();
-    byte[] targetServerBytes = targetServer.getBytes(StandardCharsets.UTF_8);
-    
-    out.writeInt(targetServerBytes.length);
-    out.write(targetServerBytes);
-    
-    byte[] messageBytes = message.getBytes(StandardCharsets.UTF_8);
-    out.writeInt(messageBytes.length);
-    out.write(messageBytes);
-    
-    // 결과 확인
-    byte[] result = out.toByteArray();
-    
-    // 메시지 디코딩 테스트
-    ByteArrayDataInput in = ByteStreams.newDataInput(result);
-    
-    int serverNameLength = in.readInt();
-    assertEquals(targetServer.length(), serverNameLength);
-    
-    byte[] serverNameBytes = new byte[serverNameLength];
-    in.readFully(serverNameBytes);
-    assertEquals(targetServer, new String(serverNameBytes, StandardCharsets.UTF_8));
-    
-    int msgLength = in.readInt();
-    assertEquals(message.length(), msgLength);
-    
-    byte[] msgBytes = new byte[msgLength];
-    in.readFully(msgBytes);
-    assertEquals(message, new String(msgBytes, StandardCharsets.UTF_8));
-}
-```
+2. **상태 확인 메시지 양 측정**:
+   - 각 ping/pong 메시지는 약 10-15 bytes
+   - 기본 설정(30초 간격)에서 서버당 월간 약 1.5MB 트래픽 발생
 
-### 스트레스 테스트 스크립트
+3. **트래픽 최적화 방법**:
+   - 불필요한 상태 확인 메시지 줄이기 (간격 조정)
+   - 메시지 압축 또는 효율적인 형식 사용
 
-다량의 메시지를 자동으로 전송하는 Python 스크립트 예시:
+## 테스트 자동화
 
-```python
-#!/usr/bin/env python3
-import socket
-import time
-import struct
+### 단위 테스트 및 통합 테스트
 
-def send_rcon_command(host, port, password, command):
-    """RCON 프로토콜을 사용하여 Minecraft 서버에 명령어 전송"""
-    # RCON 구현은 실제로 더 복잡합니다. 이 예시는 개념만 보여줍니다.
-    pass
+프로젝트에는 다음과 같은 테스트가 포함되어 있습니다:
 
-def stress_test(server, num_messages=100, delay=0.1):
-    """지정된 서버에 다량의 메시지를 전송하는 스트레스 테스트"""
-    start_time = time.time()
-    
-    for i in range(num_messages):
-        command = f"/sendmessage server2 스트레스 테스트 메시지 #{i}"
-        send_rcon_command("localhost", 25575, "password", command)
-        time.sleep(delay)
-    
-    end_time = time.time()
-    elapsed = end_time - start_time
-    
-    print(f"스트레스 테스트 완료:")
-    print(f"- 전송된 메시지: {num_messages}")
-    print(f"- 총 소요 시간: {elapsed:.2f}초")
-    print(f"- 초당 메시지: {num_messages/elapsed:.2f}")
+1. **단위 테스트**: 개별 클래스 및 기능 테스트
+   - `ServerStatusManagerTest`: 서버 상태 관리 로직 테스트
+   - `MessageFormatTest`: 메시지 인코딩/디코딩 테스트
 
-if __name__ == "__main__":
-    stress_test("server1", num_messages=500, delay=0.05)
+2. **통합 테스트**: 여러 구성 요소 간의 상호 작용 테스트
+   - `ServerRoutingTest`: 플레이어 라우팅 로직 테스트
+   - `MessageRoutingTest`: 서버 간 메시지 라우팅 테스트
+
+### 테스트 실행 방법
+
+Gradle을 사용하여 테스트를 실행할 수 있습니다:
+
+```bash
+# 모든 테스트 실행
+./gradlew test
+
+# 특정 테스트 실행
+./gradlew test --tests "com.lukehemmin.lukeVanillaVelocity.ServerStatusManagerTest"
 ```
 
-## 로그 자동 분석 도구
+### 부하 테스트
 
-로그 파일을 자동으로 분석하여 오류 및 성능 문제를 식별하는 간단한 Python 스크립트:
+부하 테스트를 수행하여 시스템의 안정성과 성능을 평가할 수 있습니다:
 
-```python
-#!/usr/bin/env python3
-import re
-import sys
-from collections import defaultdict
+1. **테스트 봇 사용**:
+   - [Mineflayer](https://github.com/PrismarineJS/mineflayer) 라이브러리를 사용하여 테스트 봇 구현
+   - 다수의 클라이언트 연결 시뮬레이션
 
-def analyze_log(log_file):
-    """로그 파일을 분석하여 메시징 관련 이벤트와 오류를 보고"""
-    error_count = 0
-    message_count = 0
-    message_times = []
-    
-    # 정규식 패턴
-    error_pattern = r"\[(ERROR|SEVERE)\].*메시지.*"
-    message_sent_pattern = r"\[INFO\].*메시지 전송.*"
-    message_received_pattern = r"\[INFO\].*메시지 수신.*"
-    
-    with open(log_file, 'r', encoding='utf-8') as f:
-        for line in f:
-            if re.search(error_pattern, line):
-                error_count += 1
-                print(f"오류 발견: {line.strip()}")
-            
-            if re.search(message_sent_pattern, line) or re.search(message_received_pattern, line):
-                message_count += 1
-    
-    print(f"\n분석 결과:")
-    print(f"- 총 메시지 이벤트: {message_count}")
-    print(f"- 오류 수: {error_count}")
-    
-    if error_count > 0:
-        print(f"- 오류율: {error_count/message_count*100:.2f}%")
+2. **메시지 부하 테스트 스크립트**:
 
-if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("사용법: python analyze_log.py <로그파일경로>")
-        sys.exit(1)
-        
-    analyze_log(sys.argv[1])
-``` 
+   ```javascript
+   // message_load_test.js
+   const mineflayer = require('mineflayer');
+   
+   // 설정
+   const NUM_BOTS = 10;
+   const SERVER_HOST = 'localhost';
+   const SERVER_PORT = 25577;
+   
+   // 봇 생성 및 명령어 실행
+   const bots = [];
+   
+   function createBot(index) {
+     const bot = mineflayer.createBot({
+       host: SERVER_HOST,
+       port: SERVER_PORT,
+       username: `TestBot${index}`,
+       version: '1.19.4'
+     });
+     
+     bot.once('spawn', () => {
+       console.log(`Bot ${bot.username} spawned`);
+       
+       // 정기적으로 메시지 명령어 실행
+       setInterval(() => {
+         bot.chat(`/sendmessage survival 이것은 부하 테스트 메시지입니다. 봇: ${bot.username}`);
+       }, 5000 + (index * 500)); // 봇마다 약간의 시간차를 두어 부하 분산
+     });
+     
+     return bot;
+   }
+   
+   // 봇 생성
+   for (let i = 0; i < NUM_BOTS; i++) {
+     setTimeout(() => {
+       bots.push(createBot(i));
+     }, i * 2000); // 2초 간격으로 봇 접속
+   }
+   ```
+
+3. **실행 방법**:
+   ```bash
+   node message_load_test.js
+   ```
+
+## 버전 호환성 테스트
+
+### Minecraft 버전 호환성
+
+LukeVanilla-Velocity 시스템은 다음 버전에서 테스트되었습니다:
+
+| 구성 요소 | 최소 버전 | 권장 버전 | 최대 테스트 버전 |
+|----------|----------|----------|----------------|
+| Velocity | 3.2.0    | 3.2.0+   | 3.3.0-SNAPSHOT |
+| Paper    | 1.19.4   | 1.20.1+  | 1.20.4         |
+| Java     | 17       | 17+      | 21             |
+
+### 다양한 환경에서의 테스트
+
+1. **온라인 모드와 오프라인 모드**:
+   - 온라인 모드 (추천): Velocity 프록시는 인증을 처리하고 백엔드 서버는 오프라인 모드
+   - 오프라인 모드: 모든 서버가 오프라인 모드로 설정될 수 있지만 보안 위험 존재
+
+2. **IP 포워딩 모드**:
+   - MODERN (추천): 더 안전한 포워딩 방식
+   - LEGACY: 이전 버전 호환성을 위해 지원됨
+   - NONE: 포워딩 없음, IP 정보가 서버 간에 공유되지 않음
+
+3. **다양한 서버 수 구성**:
+   - 최소 구성: 1 프록시 + 2 백엔드 서버 (survival, lobby)
+   - 중간 구성: 1 프록시 + 3-5 백엔드 서버 (다양한 게임 모드)
+   - 대규모 구성: 1 프록시 + 10+ 백엔드 서버 (테스트 완료)
+
+### 호환성 문제 해결
+
+1. **버전 불일치 문제**:
+   - 증상: `NoSuchMethodError` 또는 `ClassNotFoundException` 오류
+   - 해결: 모든 서버와 프록시가 호환되는 버전을 사용하도록 확인
+
+2. **API 변경 문제**:
+   - 증상: Velocity API 변경으로 인한 컴파일 오류
+   - 해결: 코드를 최신 API에 맞게 업데이트하고 다시 빌드
+
+3. **플러그인 충돌**:
+   - 증상: 다른 플러그인과의 충돌로 인한 예기치 않은 동작
+   - 해결: 충돌하는 플러그인 식별 및 호환성 패치 적용
+
+더 자세한 정보는 [개발자 API 문서](developer-api.md)와 [프로젝트 구조](project-structure.md) 문서를 참조하세요. 
