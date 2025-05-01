@@ -27,6 +27,9 @@ dependencies {
     compileOnly("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
     kapt("com.velocitypowered:velocity-api:3.4.0-SNAPSHOT")
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
+    
+    // Paper API 종속성 추가 (테스트용)
+    compileOnly("io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT")
 }
 
 tasks {
@@ -35,6 +38,10 @@ tasks {
         // This is the only required configuration besides applying the plugin.
         // Your plugin's jar (or shadowJar if present) will be used automatically.
         velocityVersion("3.4.0-SNAPSHOT")
+    }
+    
+    shadowJar {
+        archiveClassifier.set("")
     }
 }
 

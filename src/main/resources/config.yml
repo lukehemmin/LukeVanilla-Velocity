@@ -1,0 +1,19 @@
+# LukeVanilla-Paper 플러그인 설정 파일
+
+# 서버 이름 (Velocity 프록시 구성의 서버 이름과 일치해야 함)
+server-name: "server1"
+
+# 서버 목록 (자동 완성 및 기타 기능에 사용)
+servers:
+  - "lobby"
+  - "survival"
+  - "creative"
+  - "minigames"
+
+# 메시징 설정
+messaging:
+  # 디버그 모드 (true로 설정하면 더 많은 로그 출력)
+  debug: false
+  
+  # 전송 실패 시 재시도 횟수
+  retry-count: 3 

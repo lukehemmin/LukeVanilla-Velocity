@@ -1,0 +1,21 @@
+name: LukeVanilla-Paper
+version: 1.0-SNAPSHOT
+main: com.lukehemmin.lukevanillapaper.LukeVanillaPaper
+api-version: '1.20'
+description: Minecraft 서버 간 메시징을 위한 Paper 플러그인
+authors: [LukeHemmin]
+website: https://github.com/LukeHemmin/LukeVanilla
+
+# 명령어 등록
+commands:
+  sendmessage:
+    description: 다른 서버로 메시지를 전송합니다.
+    usage: /sendmessage <대상서버> <메시지>
+    aliases: [smsg]
+    permission: lukevanilla.command.sendmessage
+
+# 권한 정의
+permissions:
+  lukevanilla.command.sendmessage:
+    description: 메시지 전송 명령어를 사용할 권한
+    default: op 
