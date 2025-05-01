@@ -1,0 +1,28 @@
+# LukeVanilla-Velocity 설정 예시
+# 실제 적용 시 이 파일을 velocity.toml로 변경하여 사용하세요.
+
+# 서버 정보 설정
+# survival 서버는 메인 서버, lobby 서버는 대체 서버로 사용됩니다.
+[servers]
+  # 메인 서버 (생존 서버)
+  survival = "127.0.0.1:25565"
+  # 대체 서버 (로비 서버)
+  lobby = "127.0.0.1:25566"
+
+# 플러그인 메시징 설정
+# 플러그인 메시징을 사용하기 위해 필요합니다.
+[plugins]
+  # Bungee 호환 플러그인 메시지 채널 활성화
+  bungee-plugin-message-channel = true
+
+# 포워딩 설정
+# MODERN으로 설정하면 더 안전한 포워딩 방식을 사용합니다.
+[player-info-forwarding]
+  mode = "MODERN"
+  
+# 시작 서버 설정
+# 플레이어가 처음 접속 시 연결될 서버입니다.
+# 서버 상태 관리 시스템이 상태에 따라 자동으로 적절한 서버로 라우팅합니다.
+[forced-hosts]
+  # 모든 도메인에 대해 로비로 초기 연결 후 서버 상태에 따라 라우팅
+  "*" = "lobby" 

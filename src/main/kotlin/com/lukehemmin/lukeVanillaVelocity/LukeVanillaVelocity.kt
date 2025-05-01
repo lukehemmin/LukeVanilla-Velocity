@@ -5,6 +5,7 @@ import com.lukehemmin.lukeVanillaVelocity.commands.MessageCommand
 import com.velocitypowered.api.command.CommandManager
 import com.velocitypowered.api.event.Subscribe
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent
+import com.velocitypowered.api.event.proxy.ProxyShutdownEvent
 import com.velocitypowered.api.plugin.Plugin
 import com.velocitypowered.api.proxy.ProxyServer
 import com.velocitypowered.api.proxy.messages.ChannelIdentifier
@@ -23,6 +24,7 @@ import java.nio.charset.StandardCharsets
  * 구현 기능:
  * - 서버 ⇄ 프록시 ⇄ 서버 메시징 (서버 간 데이터 전송)
  * - 프록시 ⇄ 서버 메시징 (프록시에서 특정 서버로 메시지 전송)
+ * - 서버 상태 관리 및 라우팅 (서버 상태에 따라 플레이어를 적절한 서버로 연결)
  */
 @Plugin(
     id = "lukevanilla-velocity", 
@@ -39,6 +41,9 @@ class LukeVanillaVelocity @Inject constructor(
     // 서버 간 메시징을 위한 채널 식별자
     private val messagingChannel: ChannelIdentifier = MinecraftChannelIdentifier.create("custom", "msg")
     
+    // 서버 상태 관리자
+    private lateinit var serverStatusManager: ServerStatusManager
+    
     /**
      * 프록시 초기화 이벤트 핸들러
      * 메시징 채널을 등록하고 리스너를 설정합니다.
@@ -48,14 +53,48 @@ class LukeVanillaVelocity @Inject constructor(
         // 메시징 채널 등록
         server.channelRegistrar.register(messagingChannel)
         
+        // 서버 상태 관리자 초기화
+        initializeServerStatusManager()
+        
         // 서버로부터의 메시지 수신을 처리하는 리스너 등록
         server.eventManager.register(this, ServerToProxyMessageListener(this))
+        
+        // 서버 상태 메시지 리스너 등록
+        server.eventManager.register(this, ServerStatusMessageListener(this, serverStatusManager))
+        
+        // 플레이어 연결 리스너 등록
+        server.eventManager.register(this, PlayerConnectionListener(this, serverStatusManager))
         
         // 명령어 등록
         registerCommands()
         
         logger.info("LukeVanilla-Velocity 메시징 시스템이 초기화되었습니다.")
         logger.info("등록된 채널: ${messagingChannel.id}")
+    }
+    
+    /**
+     * 프록시 종료 이벤트 핸들러
+     * 리소스를 정리합니다.
+     */
+    @Subscribe
+    fun onProxyShutdown(event: ProxyShutdownEvent) {
+        // 서버 상태 관리자 종료
+        if (::serverStatusManager.isInitialized) {
+            serverStatusManager.shutdown()
+        }
+        
+        logger.info("LukeVanilla-Velocity 플러그인이 종료되었습니다.")
+    }
+    
+    /**
+     * 서버 상태 관리자를 초기화합니다.
+     */
+    private fun initializeServerStatusManager() {
+        serverStatusManager = ServerStatusManager(this, server, logger)
+        serverStatusManager.initialize()
+        
+        // 초기 서버 상태 확인
+        serverStatusManager.checkServerStatus()
     }
     
     /**
@@ -154,5 +193,14 @@ class LukeVanillaVelocity @Inject constructor(
      */
     fun getLogger(): Logger {
         return logger
+    }
+    
+    /**
+     * 서버 상태 관리자 인스턴스를 반환합니다.
+     * 
+     * @return ServerStatusManager 인스턴스
+     */
+    fun getServerStatusManager(): ServerStatusManager {
+        return serverStatusManager
     }
 }

@@ -1,0 +1,11 @@
+name: LukePaper
+version: 1.0.0
+main: com.lukehemmin.lukepaper.LukePaperPlugin
+api-version: 1.19
+description: Velocity 프록시와 통신하는 Paper 서버 플러그인
+author: LukeHemmin
+
+permissions:
+  lukepaper.message:
+    description: 서버 간 메시지 전송 권한
+    default: op 
